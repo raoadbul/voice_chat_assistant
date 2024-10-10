@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Streaming with WebSocket</title>
+</head>
+<body>
+    <h1>Audio Live Streaming</h1>
+    <button id="startRecording">Start Recording</button>
+    <button id="stopRecording" disabled>Stop Recording</button>
+    <p id="status">Status: Disconnected</p>
+
+    <script>
+        let socket;
+        let mediaRecorder;
+        let audioChunks = [];
+    
+        function connectWebSocket() {
+            socket = new WebSocket('ws://127.0.0.1:8000/ws/audio/');
+    
+            socket.onopen = function() {
+                console.log("WebSocket connection established");
+                document.getElementById('status').textContent = "Status: Connected";
+                document.getElementById('startRecording').disabled = false;
+            };
+    
+            socket.onerror = function(error) {
+                console.error("WebSocket error observed:", error);
+                document.getElementById('status').textContent = "Status: Error";
+            };
+    
+            socket.onmessage = function(event) {
+                console.log("Message from server: ", event.data);
+            };
+    
+            socket.onclose = function() {
+                console.log("WebSocket connection closed");
+                document.getElementById('status').textContent = "Status: Disconnected";
+                document.getElementById('startRecording').disabled = true;
+            };
+        }
+    
+        document.getElementById('startRecording').onclick = function() {
+            connectWebSocket();  // Connect WebSocket when starting recording
+    
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.start();
+                    document.getElementById('startRecording').disabled = true;
+                    document.getElementById('stopRecording').disabled = false;
+    
+                    mediaRecorder.ondataavailable = function(event) {
+                        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                            socket.send(event.data);
+                            console.log(`Sent ${event.data.size} bytes of audio data`);
+                        }
+                    };
+    
+                    mediaRecorder.onstop = function() {
+                        console.log("Recording stopped. Closing WebSocket.");
+                        socket.close();
+                        document.getElementById('stopRecording').disabled = true;
+                        document.getElementById('startRecording').disabled = false;
+                    };
+                })
+                .catch(error => {
+                    console.error("Error accessing media devices:", error);
+                    document.getElementById('status').textContent = "Error accessing audio devices.";
+                });
+        };
+    
+        document.getElementById('stopRecording').onclick = function() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                console.log("Stopping recording...");
+                document.getElementById('stopRecording').disabled = true;
+            }
+        };
+    </script>
+    
+
+</body>
+</html>
